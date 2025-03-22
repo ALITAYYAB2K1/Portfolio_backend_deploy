@@ -7,105 +7,236 @@ import { v2 as cloudinary } from "cloudinary";
 import { image_ID_Parser } from "../utils/imageParser.js";
 
 const addNewProject = asyncHandler(async (req, res, next) => {
-  const { title, description, projectUrl, gitRepoUrl, stack, deployed } =
-    req.body;
-  if (!title || !description || !stack || !deployed) {
-    throw new ApiError("All fields are required", 400);
+  try {
+    console.log("Processing add project request");
+
+    const { title, description, projectUrl, gitRepoUrl, stack, deployed } =
+      req.body;
+
+    // Validate required fields
+    if (!title || !description || !stack || deployed === undefined) {
+      throw new ApiError(400, "All required fields must be provided");
+    }
+
+    // Check for image
+    if (!req.files || !req.files.image || !req.files.image[0]) {
+      console.log("Files in request:", req.files);
+      throw new ApiError(400, "Project image is required");
+    }
+
+    // Get image file from memory
+    const imageFile = req.files.image[0];
+
+    console.log("Image file details:", {
+      filename: imageFile.originalname,
+      mimetype: imageFile.mimetype,
+      size: imageFile.size,
+    });
+
+    // Upload image to Cloudinary
+    let image;
+    try {
+      image = await uploadOnCloudinary(imageFile, "projects");
+
+      if (!image || !image.url) {
+        throw new Error("Image upload failed");
+      }
+
+      console.log("Cloudinary upload successful:", image.url);
+    } catch (uploadError) {
+      console.error("Image upload error:", uploadError);
+      throw new ApiError(500, "Failed to upload project image");
+    }
+
+    // Create project
+    const newProject = await Project.create({
+      title,
+      description,
+      projectUrl: projectUrl || "",
+      gitRepoUrl: gitRepoUrl || "",
+      stack,
+      deployed,
+      image: image.url,
+    });
+
+    if (!newProject) {
+      throw new ApiError(500, "Failed to create new project");
+    }
+
+    console.log("Project created successfully:", newProject._id);
+
+    res
+      .status(201)
+      .json(new ApiResponse(201, newProject, "Project created successfully"));
+  } catch (error) {
+    console.error("Add project error:", error);
+    next(error);
   }
-  if (!req.files && !req.files.image) {
-    throw new ApiError("Image is required", 400);
-  }
-  const imageLocalPath = req.files.image[0].path;
-  const image = await uploadOnCloudinary(imageLocalPath, "image");
-  if (!image) {
-    throw new ApiError("Failed to upload image", 500);
-  }
-  const newProject = await Project.create({
-    title: title,
-    description: description,
-    projectUrl: projectUrl,
-    gitRepoUrl: gitRepoUrl,
-    stack: stack,
-    deployed: deployed,
-    image: image.url || "",
-  });
-  if (!newProject) {
-    return next(new ApiError("Failed to create new project", 500));
-  }
-  res.status(201).json(new ApiResponse("Project created", newProject));
 });
 
 const getAllProject = asyncHandler(async (req, res, next) => {
-  const projects = await Project.find({});
-  if (!projects || projects.length === 0) {
-    throw new ApiError("Projects not found", 404);
+  try {
+    const projects = await Project.find({}).sort({ createdAt: -1 });
+
+    if (!projects || projects.length === 0) {
+      throw new ApiError(404, "No projects found");
+    }
+
+    res
+      .status(200)
+      .json(new ApiResponse(200, projects, "Projects retrieved successfully"));
+  } catch (error) {
+    console.error("Get projects error:", error);
+    next(error);
   }
-  res.status(200).json(new ApiResponse("Projects found", projects));
 });
 
 const deleteProject = asyncHandler(async (req, res, next) => {
-  const { id } = req.params;
-  const project = await Project.findById(id);
-  if (!project) {
-    throw new ApiError("Project not found", 404);
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      throw new ApiError(400, "Project ID is required");
+    }
+
+    const project = await Project.findById(id);
+
+    if (!project) {
+      throw new ApiError(404, "Project not found");
+    }
+
+    // Delete image from Cloudinary
+    if (project.image) {
+      try {
+        const publicId = image_ID_Parser(project.image);
+        console.log(
+          `Attempting to delete project image with public ID: ${publicId}`
+        );
+
+        const result = await cloudinary.uploader.destroy(publicId);
+        console.log("Cloudinary delete result:", result);
+      } catch (cloudinaryError) {
+        console.error("Error deleting image from Cloudinary:", cloudinaryError);
+        // Continue with deletion even if Cloudinary fails
+      }
+    }
+
+    // Delete project from database
+    await project.deleteOne();
+
+    res
+      .status(200)
+      .json(new ApiResponse(200, null, "Project deleted successfully"));
+  } catch (error) {
+    console.error("Delete project error:", error);
+    next(error);
   }
-  const prevImage = project.image;
-  const publicId = image_ID_Parser(prevImage);
-  console.log(`Attempting to delete image with public ID: ${publicId}`);
-  const result = await cloudinary.uploader.destroy(publicId);
-  console.log(result, "deleted image from cloudinary");
-  await project.deleteOne();
-  res.status(200).json(new ApiResponse("Project deleted", null));
 });
 
 const updateProject = asyncHandler(async (req, res, next) => {
-  const { id } = req.params;
-  let project = await Project.findById(id);
-  if (!project) {
-    throw new ApiError("Project not found", 404);
-  }
-  const newProject = {
-    title: req.body.title,
-    description: req.body.description,
-    projectUrl: req.body.projectUrl,
-    gitRepoUrl: req.body.gitRepoUrl,
-    stack: req.body.stack,
-    deployed: req.body.deployed,
-  };
-  if (req.files && req.files.image) {
-    const imageLocalPath = req.files.image[0].path;
-    const image = await uploadOnCloudinary(imageLocalPath, "image");
-    if (!image) {
-      throw new ApiError("Failed to upload image", 500);
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      throw new ApiError(400, "Project ID is required");
     }
-    newProject.image = image.url;
-    const prevImage = project.image;
-    const publicId = image_ID_Parser(prevImage);
-    console.log(`Attempting to delete image with public ID: ${publicId}`);
-    const result = await cloudinary.uploader.destroy(publicId);
-    console.log(result, "deleted image from cloudinary");
-  }
-  const updatedProject = await Project.findByIdAndUpdate(
-    req.params.id,
-    newProject,
-    {
+
+    // Check if project exists
+    const project = await Project.findById(id);
+
+    if (!project) {
+      throw new ApiError(404, "Project not found");
+    }
+
+    // Create update object with existing values as defaults
+    const updateData = {
+      title: req.body.title || project.title,
+      description: req.body.description || project.description,
+      projectUrl: req.body.projectUrl || project.projectUrl,
+      gitRepoUrl: req.body.gitRepoUrl || project.gitRepoUrl,
+      stack: req.body.stack || project.stack,
+      deployed:
+        req.body.deployed !== undefined ? req.body.deployed : project.deployed,
+    };
+
+    // Handle image update if provided
+    if (req.files && req.files.image && req.files.image[0]) {
+      const imageFile = req.files.image[0];
+      const previousImage = project.image;
+
+      console.log("Updating project image:", imageFile.originalname);
+
+      // Upload new image
+      try {
+        const image = await uploadOnCloudinary(imageFile, "projects");
+
+        if (!image || !image.url) {
+          throw new Error("Image upload failed");
+        }
+
+        updateData.image = image.url;
+
+        // Delete previous image if it exists
+        if (previousImage) {
+          try {
+            const publicId = image_ID_Parser(previousImage);
+            console.log(`Deleting previous project image: ${publicId}`);
+
+            const result = await cloudinary.uploader.destroy(publicId);
+            console.log("Image deletion result:", result);
+          } catch (error) {
+            console.error("Error deleting previous image:", error);
+            // Continue with update even if deletion fails
+          }
+        }
+      } catch (uploadError) {
+        console.error("Image update error:", uploadError);
+        throw new ApiError(500, "Failed to update project image");
+      }
+    }
+
+    // Update project in database
+    const updatedProject = await Project.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
+    });
+
+    if (!updatedProject) {
+      throw new ApiError(500, "Failed to update project");
     }
-  );
-  if (!updatedProject) {
-    return next(new ApiError("Failed to update project", 500));
+
+    res
+      .status(200)
+      .json(
+        new ApiResponse(200, updatedProject, "Project updated successfully")
+      );
+  } catch (error) {
+    console.error("Update project error:", error);
+    next(error);
   }
-  res.status(200).json(new ApiResponse("Project updated", updatedProject));
 });
 
 const getProject = asyncHandler(async (req, res, next) => {
-  const { id } = req.params;
-  const project = await Project.findById(id);
-  if (!project) {
-    throw new ApiError("Project not found", 404);
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      throw new ApiError(400, "Project ID is required");
+    }
+
+    const project = await Project.findById(id);
+
+    if (!project) {
+      throw new ApiError(404, "Project not found");
+    }
+
+    res
+      .status(200)
+      .json(new ApiResponse(200, project, "Project retrieved successfully"));
+  } catch (error) {
+    console.error("Get project error:", error);
+    next(error);
   }
-  res.status(200).json(new ApiResponse("Project found", project));
 });
 
 export {
