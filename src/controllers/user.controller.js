@@ -97,6 +97,8 @@ const registerUser = asyncHandler(async (req, res, next) => {
   const options = {
     httpOnly: true,
     secure: true,
+    sameSite: "none", // Required for cross-domain (Netlify to Render)
+    maxAge: 24 * 60 * 60 * 1000, // 1 day expiration
   };
 
   return res
@@ -138,6 +140,8 @@ const loginUser = asyncHandler(async (req, res, next) => {
   const options = {
     httpOnly: true,
     secure: true,
+    sameSite: "none", // Required for cross-domain (Netlify to Render)
+    maxAge: 24 * 60 * 60 * 1000, // 1 day expiration
   };
   return res
     .status(200)
@@ -169,6 +173,8 @@ const logoutUser = asyncHandler(async (req, res, next) => {
   const options = {
     httpOnly: true,
     secure: true,
+    sameSite: "none", // Required for cross-domain (Netlify to Render)
+    maxAge: 24 * 60 * 60 * 1000, // 1 day expiration
   };
   return res
     .status(200)
@@ -193,7 +199,7 @@ const updateUserProfile = asyncHandler(async (req, res, next) => {
     aboutMe: req.body.aboutMe || req.user.aboutMe,
     phone: req.body.phone || req.user.phone,
     portfolioURL: req.body.portfolioURL || req.user.portfolioURL,
-    githubURL: req.body.githubURL || req.user.github || "",
+    githubURL: req.body.githubURL || req.user.githubURL || "",
     linkedinURL: req.body.linkedinURL || req.user.linkedinURL || "",
     facebookURL: req.body.facebookURL || req.user.facebookURL || "",
     twitterURL: req.body.twitterURL || req.user.twitterURL || "",
@@ -365,6 +371,8 @@ const resetPassword = asyncHandler(async (req, res, next) => {
   const options = {
     httpOnly: true,
     secure: true,
+    sameSite: "none", // Required for cross-domain (Netlify to Render)
+    maxAge: 24 * 60 * 60 * 1000, // 1 day expiration
   };
   return res
     .status(200)

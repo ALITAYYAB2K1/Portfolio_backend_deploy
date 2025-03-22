@@ -97,9 +97,3 @@ userSchema.methods.generateResetPasswordToken = function () {
 };
 
 export const User = mongoose.model("User", userSchema);
-
-// The expression Date.now() + 10 * (60 * 1000) adds 10 minutes to the current time
-// It breaks down as:
-// 60 * 1000 = 60,000 milliseconds (1 minute)
-// 10 * 60,000 = 600,000 milliseconds (10 minutes)
-// This sets the reset password token to expire in 10 minutes

@@ -8,6 +8,7 @@ app.use(
     origin: [process.env.PORTFOLIO_URL, process.env.DASHBOARD_URL],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(cookieparser());
@@ -15,7 +16,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 app.use(cookieparser());
-
+app.options("*", cors());
 import messageRouter from "./routes/message.routes.js";
 import userRouter from "./routes/user.routes.js";
 import timelineRouter from "./routes/timeline.routes.js";
