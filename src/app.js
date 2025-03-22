@@ -12,8 +12,8 @@ app.use(
   })
 );
 app.use(cookieparser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(express.static("public"));
 app.use(cookieparser());
 app.options("*", cors());
@@ -29,4 +29,14 @@ app.use("/api/v1/timeline", timelineRouter);
 app.use("/api/v1/softwareapplications", softwareApplicationRouter);
 app.use("/api/v1/skill", skillRouter);
 app.use("/api/v1/project", projectRouter);
+app.use((err, req, res, next) => {
+  console.error("Application error:", err.stack || err);
+
+  // Send proper JSON response instead of HTML
+  res.status(err.statusCode || 500).json({
+    success: false,
+    message: err.message || "Internal server error",
+    error: process.env.NODE_ENV === "development" ? err.stack : undefined,
+  });
+});
 export default app;

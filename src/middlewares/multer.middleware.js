@@ -1,27 +1,27 @@
 import multer from "multer";
 
-// Use memory storage for cloud environments
+// Configure multer to use memory storage
 const storage = multer.memoryStorage();
 
-// Add file filter to explicitly allow SVG files
+// Accept SVG files explicitly
 const fileFilter = (req, file, cb) => {
-  // Accept SVG files explicitly
+  console.log("Multer processing file:", file.originalname, file.mimetype);
+
   if (
     file.mimetype === "image/svg+xml" ||
-    (file.originalname && file.originalname.toLowerCase().endsWith(".svg"))
+    file.originalname.toLowerCase().endsWith(".svg")
   ) {
     cb(null, true);
   } else if (file.mimetype.startsWith("image/")) {
-    // Accept other image types
     cb(null, true);
   } else {
-    // Reject other file types
-    cb(new Error("Unsupported file type"), false);
+    console.log("Rejected file:", file.originalname, file.mimetype);
+    cb(new Error(`Unsupported file type: ${file.mimetype}`), false);
   }
 };
 
 export const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 });

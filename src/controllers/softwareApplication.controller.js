@@ -9,6 +9,8 @@ import { image_ID_Parser } from "../utils/imageParser.js";
 const addNewApplication = asyncHandler(async (req, res, next) => {
   try {
     console.log("Processing application creation request");
+
+    // Log request details
     console.log("Request body:", req.body);
     console.log(
       "Files received:",
@@ -18,49 +20,56 @@ const addNewApplication = asyncHandler(async (req, res, next) => {
     const { name } = req.body;
 
     if (!name) {
-      throw new ApiError("Name is required", 400);
+      throw new ApiError(400, "Name is required");
     }
 
     if (!req.files || !req.files.svg || !req.files.svg[0]) {
-      throw new ApiError("SVG file is required", 400);
+      throw new ApiError(400, "SVG file is required");
     }
 
-    // Get the file from memory
     const svgFile = req.files.svg[0];
-    console.log("SVG file details:", {
-      fieldname: svgFile.fieldname,
-      originalname: svgFile.originalname,
-      mimetype: svgFile.mimetype,
-      size: svgFile.size,
-      // Add buffer info without logging the actual buffer
-      buffer: svgFile.buffer ? "Buffer present" : "No buffer",
-    });
 
-    // Upload directly from memory
-    const svg = await uploadOnCloudinary(svgFile, "svg");
+    // Handle SVG upload with direct error handling
+    let svg;
+    try {
+      svg = await uploadOnCloudinary(svgFile, "applications");
 
-    if (!svg || !svg.url) {
-      throw new ApiError("Failed to upload SVG to Cloudinary", 500);
+      if (!svg || !svg.url) {
+        throw new Error("Cloudinary upload failed");
+      }
+    } catch (uploadError) {
+      console.error("SVG upload error:", uploadError);
+      throw new ApiError(500, `Failed to upload SVG: ${uploadError.message}`);
     }
 
-    console.log("Cloudinary upload successful:", svg.url);
+    console.log("Creating application with:", { name, svgUrl: svg.url });
 
     const newApplication = await SoftwareApplication.create({
-      name: name,
-      svg: svg.url || "",
+      name,
+      svg: svg.url,
     });
 
-    if (!newApplication) {
-      throw new ApiError("Failed to create new application", 500);
-    }
-
-    console.log("Application created successfully");
     res
       .status(201)
-      .json(new ApiResponse(201, newApplication, "Application created"));
+      .json(
+        new ApiResponse(201, newApplication, "Application created successfully")
+      );
   } catch (error) {
     console.error("Application creation error:", error);
-    next(error);
+
+    // Explicitly handle the error instead of passing to next
+    if (error instanceof ApiError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error during application creation",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 });
 

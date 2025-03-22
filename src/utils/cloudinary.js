@@ -1,84 +1,64 @@
 import { v2 as cloudinary } from "cloudinary";
-import { Readable } from "stream";
+import DataURIParser from "datauri/parser.js";
+import path from "path";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
-  // Remove cloudinary_url as it's not needed and could cause conflicts
 });
 
-// Log cloudinary config status on startup
+// Log configuration on startup
 console.log("Cloudinary Configuration Status:", {
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? "✓" : "✗",
-  api_key: process.env.CLOUDINARY_API_KEY ? "✓" : "✗",
-  api_secret: process.env.CLOUDINARY_API_SECRET ? "✓" : "✗",
+  cloud_name: !!process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: !!process.env.CLOUDINARY_API_KEY,
+  api_secret: !!process.env.CLOUDINARY_API_SECRET,
 });
 
-// Modified to handle either file paths or buffers
-const uploadOnCloudinary = async (fileInput, folderName = "") => {
+const parser = new DataURIParser();
+
+const uploadOnCloudinary = async (file, folder = "") => {
   try {
-    if (!fileInput) return null;
-
-    console.log("Upload file details:", {
-      mimetype: fileInput.mimetype,
-      originalname: fileInput.originalname,
-      size: fileInput.size,
-    });
-
-    // Check if it's an SVG file
-    const isSvg =
-      fileInput.mimetype === "image/svg+xml" ||
-      (fileInput.originalname &&
-        fileInput.originalname.toLowerCase().endsWith(".svg"));
-
-    // Special handling for SVG files
-    const uploadOptions = {
-      folder: folderName,
-      resource_type: isSvg ? "image" : "auto", // Explicitly set as "image" for SVGs
-    };
-
-    if (Buffer.isBuffer(fileInput.buffer)) {
-      return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          uploadOptions,
-          (error, result) => {
-            if (error) {
-              console.log("Cloudinary upload error:", error);
-              return reject(error);
-            }
-            console.log(
-              "File uploaded successfully to cloudinary:",
-              result.url
-            );
-            resolve(result);
-          }
-        );
-
-        // Convert buffer to stream and pipe to cloudinary
-        const readableStream = require("stream").Readable.from(
-          fileInput.buffer
-        );
-        readableStream.pipe(uploadStream);
-      });
-    }
-    // For file path (legacy)
-    else if (typeof fileInput === "string") {
-      const uploadResult = await cloudinary.uploader.upload(
-        fileInput,
-        uploadOptions
-      );
-      console.log(
-        "File uploaded successfully to cloudinary:",
-        uploadResult.url
-      );
-      return uploadResult;
-    } else {
-      console.log("Invalid file input type");
+    if (!file) {
+      console.log("No file provided to uploadOnCloudinary");
       return null;
     }
+
+    console.log("Uploading file to Cloudinary:", {
+      filename: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      folder,
+    });
+
+    // Convert file buffer to Data URI
+    const fileFormat = path.extname(file.originalname).toString();
+    const fileUri = parser.format(fileFormat, file.buffer);
+
+    // If it's SVG, handle specifically
+    const resourceType = file.mimetype === "image/svg+xml" ? "image" : "auto";
+
+    // Upload to Cloudinary using a Promise
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader.upload(
+        fileUri.content,
+        {
+          folder,
+          resource_type: resourceType,
+        },
+        (error, result) => {
+          if (error) {
+            console.error("Cloudinary upload error:", error);
+            reject(error);
+          } else {
+            console.log("Cloudinary upload success:", result.url);
+            resolve(result);
+          }
+        }
+      );
+    });
   } catch (error) {
-    console.log("Error while uploading file to cloudinary:", error);
+    console.error("Error in uploadOnCloudinary:", error);
     return null;
   }
 };
