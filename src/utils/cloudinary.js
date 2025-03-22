@@ -20,16 +20,28 @@ const uploadOnCloudinary = async (fileInput, folderName = "") => {
   try {
     if (!fileInput) return null;
 
-    let uploadResult;
+    console.log("Upload file details:", {
+      mimetype: fileInput.mimetype,
+      originalname: fileInput.originalname,
+      size: fileInput.size,
+    });
 
-    // If fileInput is a buffer (from memory storage)
+    // Check if it's an SVG file
+    const isSvg =
+      fileInput.mimetype === "image/svg+xml" ||
+      (fileInput.originalname &&
+        fileInput.originalname.toLowerCase().endsWith(".svg"));
+
+    // Special handling for SVG files
+    const uploadOptions = {
+      folder: folderName,
+      resource_type: isSvg ? "image" : "auto", // Explicitly set as "image" for SVGs
+    };
+
     if (Buffer.isBuffer(fileInput.buffer)) {
       return new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
-          {
-            folder: folderName,
-            resource_type: "auto",
-          },
+          uploadOptions,
           (error, result) => {
             if (error) {
               console.log("Cloudinary upload error:", error);
@@ -44,18 +56,18 @@ const uploadOnCloudinary = async (fileInput, folderName = "") => {
         );
 
         // Convert buffer to stream and pipe to cloudinary
-        const readableStream = new Readable();
-        readableStream.push(fileInput.buffer);
-        readableStream.push(null);
+        const readableStream = require("stream").Readable.from(
+          fileInput.buffer
+        );
         readableStream.pipe(uploadStream);
       });
     }
-    // If fileInput is a file path (legacy support)
+    // For file path (legacy)
     else if (typeof fileInput === "string") {
-      uploadResult = await cloudinary.uploader.upload(fileInput, {
-        folder: folderName,
-        resource_type: "auto",
-      });
+      const uploadResult = await cloudinary.uploader.upload(
+        fileInput,
+        uploadOptions
+      );
       console.log(
         "File uploaded successfully to cloudinary:",
         uploadResult.url
